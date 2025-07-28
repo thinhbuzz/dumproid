@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
+	"regexp"
 )
 
 type memoryMap struct {
@@ -88,10 +88,23 @@ func DisplayMemoryBytes(pid string, beginAddress int64, size int64) error {
 	return nil
 }
 
+// EnsureOutputDir ensures the output directory exists and is empty.
+// If it doesn't exist, it creates it. If it exists, it deletes and recreates it.
+func EnsureOutputDir(outputDir string) error {
+    // Check if directory exists
+    if info, err := os.Stat(outputDir); err == nil && info.IsDir() {
+        // Directory exists, remove it and its contents
+        if err := os.RemoveAll(outputDir); err != nil {
+            return err
+        }
+    }
+    // Create (or recreate) the directory
+    return os.Mkdir(outputDir, 0777)
+}
+
 func DumpToFile(pid string, permission string, outputPath string) error {
-	t := time.Now()
-	outputDir := filepath.Join(outputPath, t.Format("20060102150405"))
-	if err := os.Mkdir(outputDir, 0777); err != nil {
+	outputDir := filepath.Join(outputPath, "memory_dump")
+	if err := EnsureOutputDir(outputDir); err != nil {
 		return err
 	}
 	fmt.Printf("Output Dir: %s\n", outputDir)
@@ -109,10 +122,9 @@ func DumpToFile(pid string, permission string, outputPath string) error {
 	for _, v := range memoryMaps {
 		memSize := v.endAddr - v.beginAddr
 		dumpFileName := fmt.Sprintf("%x-%x_%s", v.beginAddr, v.endAddr, v.path)
-		dumpFileName = strings.Replace(dumpFileName, "/", "_", -1)
-		dumpFileName = strings.Replace(dumpFileName, " ", "_", -1)
-		dumpPath := filepath.Join(outputDir, dumpFileName)
-		fmt.Printf("  Dump File: %s\n", dumpFileName)
+		safeFileName := regexp.MustCompile(`[^a-zA-Z0-9_-]`).ReplaceAllString(dumpFileName, "_")
+		dumpPath := filepath.Join(outputDir, safeFileName)
+		fmt.Printf("  Dump File: %s\n", dumpPath)
 
 		for i := 0; i < (int(memSize)/splitSize)+1; i++ {
 			splitIndex := int64((i + 1) * splitSize)
